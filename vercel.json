@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "name": "trading-agent-ai",
+  "functions": {
+    "api/analyze.js": { "maxDuration": 300, "memory": 512 },
+    "api/market.js":  { "maxDuration": 60,  "memory": 256 },
+    "api/pairs.js":   { "maxDuration": 30,  "memory": 128 },
+    "api/health.js":  { "maxDuration": 10,  "memory": 128 }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)",     "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TRADING AGENT — MA × VMC × S&R × SMART MONEY AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&family=Space+Mono:ital,wght@0,400;0,700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #020a14;
+      --bg2:     #050f1e;
+      --bg3:     #071528;
+      --border:  #0d2a47;
+      --border2: #1a4a7a;
+      --text:    #7ab3d4;
+      --text2:   #4a7a9c;
+      --text3:   #1e3a52;
+      --accent:  #00aaff;
+      --accent2: #0066cc;
+      --green:   #00ff88;
+      --red:     #ff3355;
+      --yellow:  #ffbb00;
+      --mono:   'Share Tech Mono', monospace;
+      --hdr:    'Orbitron', sans-serif;
+      --ui:     'Space Mono', monospace;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanline */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .app { max-width: 1200px; margin: 0 auto; padding: 24px 16px 60px; }
+
+    /* ── Header ── */
+    .header { text-align: center; padding: 36px 0 28px; position: relative; }
+    .header::before, .header::after {
+      content: ''; position: absolute;
+      width: 60px; height: 60px; top: 24px;
+    }
+    .header::before { left: 0;  border-top: 1px solid var(--border2); border-left:  1px solid var(--border2); }
+    .header::after  { right: 0; border-top: 1px solid var(--border2); border-right: 1px solid var(--border2); }
+
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--border2);
+      padding: 3px 18px;
+      font-size: 9px;
+      letter-spacing: 5px;
+      color: var(--text3);
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-family: var(--hdr);
+      font-size: clamp(18px, 5vw, 30px);
+      font-weight: 900;
+      color: var(--accent);
+      letter-spacing: 4px;
+      text-shadow: 0 0 30px #00aaff55, 0 0 60px #00aaff22;
+      margin-bottom: 8px;
+    }
+
+    .sub {
+      font-size: 10px;
+      letter-spacing: 5px;
+      color: var(--text3);
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    .panel-title {
+      padding: 8px 16px;
+      font-size: 9px;
+      letter-spacing: 4px;
+      color: var(--text3);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent2);
+      box-shadow: 0 0 6px var(--accent2);
+    }
+
+    .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    .panel-body { padding: 16px; }
+
+    /* ── Pair selector ── */
+    .pair-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .pair-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 7px 13px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.15s;
+    }
+
+    .pair-btn:hover, .pair-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,170,255,0.06);
+      box-shadow: 0 0 10px rgba(0,170,255,0.2);
+    }
+
+    .custom-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    input {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 10px 14px;
+      letter-spacing: 2px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent2); box-shadow: 0 0 12px rgba(0,102,204,0.2); }
+    input::placeholder { color: var(--text3); }
+
+    /* ── Run button ── */
+    .btn-run {
+      width: 100%;
+      background: linear-gradient(135deg, #012a55, #003d7a);
+      border: 1px solid var(--accent2);
+      color: var(--accent);
+      font-family: var(--hdr);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      padding: 18px;
+      cursor: pointer;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .btn-run::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0,170,255,0.1), transparent);
+      transition: left 0.5s;
+    }
+
+    .btn-run:hover:not(:disabled)::after { left: 100%; }
+    .btn-run:hover:not(:disabled) {
+      background: linear-gradient(135deg, #013d7a, #0055aa);
+      box-shadow: 0 0 28px rgba(0,170,255,0.3);
+      color: #fff;
+    }
+    .btn-run:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Status ── */
+    .status { font-size: 11px; letter-spacing: 2px; color: #00aa55; text-align: center; min-height: 26px; padding: 4px 0 10px; }
+
+    /* ── Error ── */
+    .error-box {
+      background: rgba(255,51,85,0.06);
+      border: 1px solid rgba(255,51,85,0.3);
+      padding: 12px 18px;
+      color: #ff6688;
+      font-size: 12px;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    /* ── Decision banner ── */
+    .decision-wrap {
+      display: none;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .decision-card, .conf-card {
+      border: 1px solid var(--border);
+      padding: 18px;
+      text-align: center;
+    }
+
+    .card-label {
+      font-size: 9px;
+      letter-spacing: 4px;
+      color: var(--text3);
+      margin-bottom: 8px;
+    }
+
+    .decision-val {
+      font-family: var(--hdr);
+      font-size: clamp(22px, 5vw, 34px);
+      font-weight: 900;
+      letter-spacing: 5px;
+    }
+
+    .conf-card { display: flex; flex-direction: column; justify-content: center; min-width: 105px; }
+    .conf-val  { font-family: var(--hdr); font-size: 34px; font-weight: 900; }
+    .conf-sub  { font-size: 9px; letter-spacing: 3px; color: var(--text3); margin-top: 4px; }
+
+    /* ── Metrics ── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+    }
+
+    .m-label { font-size: 8px; letter-spacing: 3px; color: var(--text3); margin-bottom: 5px; }
+    .m-value { font-size: 12px; color: var(--accent); font-weight: 700; word-break: break-all; }
+    .m-value.bull { color: var(--green); }
+    .m-value.bear { color: var(--red); }
+    .m-value.neut { color: var(--yellow); }
+
+    /* ── EMA Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { font-size: 8px; letter-spacing: 3px; color: var(--text3); padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 10px; border-bottom: 1px solid rgba(13,42,71,0.4); }
+    tr:last-child td { border-bottom: none; }
+
+    .tag {
+      font-size: 9px; padding: 2px 8px; letter-spacing: 1px;
+      display: inline-block;
+    }
+    .tag.sb   { background: rgba(0,255,136,0.1);  color: var(--green);  border: 1px solid rgba(0,255,136,0.3); }
+    .tag.sb2  { background: rgba(0,255,136,0.05); color: #00cc66;       border: 1px solid rgba(0,255,136,0.15); }
+    .tag.bear { background: rgba(255,51,85,0.1);  color: var(--red);    border: 1px solid rgba(255,51,85,0.3); }
+    .tag.bear2{ background: rgba(255,51,85,0.05); color: #cc2244;       border: 1px solid rgba(255,51,85,0.15); }
+    .tag.neut { background: rgba(255,187,0,0.1);  color: var(--yellow); border: 1px solid rgba(255,187,0,0.3); }
+
+    /* ── Output ── */
+    .output-wrap { background: var(--bg2); border: 1px solid var(--border); display: none; }
+
+    .output-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .output-title { font-size: 9px; letter-spacing: 4px; color: var(--text3); }
+
+    .live-badge {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .live-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+    .output-body {
+      padding: 20px;
+      font-size: 12.5px;
+      line-height: 1.9;
+      white-space: pre-wrap;
+      color: #8ab8d4;
+      max-height: 74vh;
+      overflow-y: auto;
+    }
+
+    .output-body::-webkit-scrollbar { width: 3px; }
+    .output-body::-webkit-scrollbar-track { background: var(--bg); }
+    .output-body::-webkit-scrollbar-thumb { background: var(--border2); }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: var(--text3);
+      line-height: 2.2;
+    }
+
+    /* ── Animations ── */
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .fade { animation: fade 0.35s ease-out; }
+    @keyframes fade { from { opacity:0; transform: translateY(5px); } to { opacity:1; transform: translateY(0); } }
+
+    @media (max-width: 580px) {
+      .decision-wrap { grid-template-columns: 1fr 1fr; }
+      .metrics-grid  { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="badge">INSTITUTIONAL GRADE · FUTURES ANALYSIS SYSTEM · v1.0</div>
+    <h1>TRADING AGENT</h1>
+    <div class="sub">MA &times; VMC &times; S&amp;R &times; SMART MONEY AI</div>
+  </header>
+
+  <!-- Pair selector -->
+  <div class="panel fade">
+    <div class="panel-title"><span class="dot"></span>SELECT TRADING PAIR</div>
+    <div class="panel-body">
+      <div class="pair-grid" id="pairGrid"></div>
+      <div class="custom-row">
+        <input id="customPair" type="text" placeholder="Custom pair — e.g. LINK-USDT" maxlength="20"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run button -->
+  <button class="btn-run" id="btnRun">▶ &nbsp; RUN INSTITUTIONAL ANALYSIS</button>
+
+  <!-- Status -->
+  <div class="status" id="status"></div>
+
+  <!-- Error -->
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- Decision banner -->
+  <div class="decision-wrap" id="decisionWrap">
+    <div class="decision-card" id="decisionCard">
+      <div class="card-label">TRADE SIGNAL</div>
+      <div class="decision-val" id="decisionVal">—</div>
+    </div>
+    <div class="conf-card" id="confCard">
+      <div class="card-label">CONF</div>
+      <div class="conf-val" id="confVal">—</div>
+      <div class="conf-sub">/100</div>
+    </div>
+  </div>
+
+  <!-- Metrics -->
+  <div id="metricsWrap" style="display:none">
+    <div class="panel fade">
+      <div class="panel-title"><span class="dot green"></span>LIVE MARKET METRICS</div>
+      <div class="panel-body">
+        <div class="metrics-grid" id="metricsGrid"></div>
+      </div>
+    </div>
+    <div class="panel fade">
+      <div class="panel-title"><span class="dot"></span>EMA TREND ENGINE</div>
+      <div class="panel-body">
+        <table>
+          <thead>
+            <tr><th>TF</th><th>EMA 20</th><th>EMA 50</th><th>EMA 200</th><th>STATUS</th></tr>
+          </thead>
+          <tbody id="emaTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div class="output-wrap" id="outputWrap">
+    <div class="output-header">
+      <div class="output-title">▸ INSTITUTIONAL ANALYSIS REPORT</div>
+      <div class="live-badge" id="liveBadge"><div class="live-dot"></div>STREAMING</div>
+    </div>
+    <div class="output-body" id="outputBody"></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    ⚠ &nbsp; FOR EDUCATIONAL PURPOSES ONLY &nbsp;·&nbsp; NOT FINANCIAL ADVICE &nbsp;·&nbsp; TRADE AT YOUR OWN RISK<br>
+    DATA: BINGX API &nbsp;·&nbsp; AI: ANTHROPIC CLAUDE &nbsp;·&nbsp; DEPLOYED ON VERCEL
+  </div>
+
+</div><!-- .app -->
+
+<script>
+// ═══════════════════════════════════════════════════
+//  TRADING AGENT — Frontend (Vercel edition)
+// ═══════════════════════════════════════════════════
+
+const DEFAULT_PAIRS = [
+  "BTC-USDT","ETH-USDT","SOL-USDT","BNB-USDT","XRP-USDT",
+  "DOGE-USDT","AVAX-USDT","MATIC-USDT","LINK-USDT","ARB-USDT",
+  "OP-USDT","SUI-USDT","APT-USDT","INJ-USDT","TIA-USDT",
+];
+
+let selectedPair = "BTC-USDT";
+let isRunning    = false;
+let activeSSE    = null;
+let fullText     = "";
+
+// DOM refs
+const $ = id => document.getElementById(id);
+const pairGrid    = $("pairGrid");
+const customPair  = $("customPair");
+const btnRun      = $("btnRun");
+const statusEl    = $("status");
+const errorBox    = $("errorBox");
+const decisionWrap= $("decisionWrap");
+const decisionCard= $("decisionCard");
+const decisionVal = $("decisionVal");
+const confCard    = $("confCard");
+const confVal     = $("confVal");
+const metricsWrap = $("metricsWrap");
+const metricsGrid = $("metricsGrid");
+const emaTbody    = $("emaTbody");
+const outputWrap  = $("outputWrap");
+const outputBody  = $("outputBody");
+const liveBadge   = $("liveBadge");
+
+// ── Init pairs ──────────────────────────────────────
+async function initPairs() {
+  let pairs = DEFAULT_PAIRS;
+  try {
+    const r = await fetch("/api/pairs");
+    const d = await r.json();
+    if (d.pairs?.length) pairs = d.pairs;
+  } catch {}
+  pairGrid.innerHTML = "";
+  pairs.forEach(p => {
+    const b = document.createElement("button");
+    b.className = "pair-btn" + (p === selectedPair ? " active" : "");
+    b.textContent = p;
+    b.onclick = () => {
+      selectedPair = p;
+      customPair.value = "";
+      document.querySelectorAll(".pair-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+    };
+    pairGrid.appendChild(b);
+  });
+}
+
+customPair.addEventListener("input", () => {
+  const v = customPair.value.toUpperCase().trim();
+  if (v) {
+    selectedPair = v;
+    document.querySelectorAll(".pair-btn").forEach(x => x.classList.remove("active"));
+  }
+});
+
+customPair.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !isRunning) runAnalysis();
+});
+
+// ── Helpers ─────────────────────────────────────────
+function setStatus(msg) { statusEl.textContent = msg; }
+
+function showError(msg) {
+  errorBox.textContent = "⚠  " + msg;
+  errorBox.style.display = msg ? "block" : "none";
+}
+
+function f(v, d = 4) {
+  if (v == null) return "N/A";
+  const n = parseFloat(v);
+  return isNaN(n) ? String(v) : n.toFixed(d);
+}
+
+function colorClass(v) {
+  const s = String(v || "").toUpperCase();
+  if (s.includes("STRONG BULLISH") || s.includes("BULLISH BOS") || s.includes("DOMINANT") && s.includes("LONG")) return "bull";
+  if (s.includes("STRONG BEARISH") || s.includes("BEARISH BOS") || s.includes("DOMINANT") && s.includes("SHORT")) return "bear";
+  if (s.includes("BULLISH") || s.includes("BUY") || s.includes("OVERSOLD")) return "bull";
+  if (s.includes("BEARISH") || s.includes("SELL") || s.includes("OVERBOUGHT")) return "bear";
+  if (s.includes("EXPANSION") || s.includes("TRANSITIONING")) return "neut";
+  return "";
+}
+
+// ── Render metrics ──────────────────────────────────
+function renderMetrics(m) {
+  if (!m) return;
+  const items = [
+    { l: "PRICE",       v: "$" + parseFloat(m.price || 0).toLocaleString() },
+    { l: "24H CHANGE",  v: (m.change24h || "N/A") + "%" },
+    { l: "RSI DAILY",   v: f(m.rsi?.daily, 1) },
+    { l: "RSI 4H",      v: f(m.rsi?.h4, 1) },
+    { l: "WT 4H",       v: m.wavetrend?.h4 || "N/A" },
+    { l: "WT 1H",       v: m.wavetrend?.h1 || "N/A" },
+    { l: "MF 4H",       v: m.moneyFlow?.h4 || "N/A" },
+    { l: "MF 1H",       v: m.moneyFlow?.h1 || "N/A" },
+    { l: "4H ATR",      v: m.volatility?.h4ATR || "N/A" },
+    { l: "BB WIDTH 4H", v: (m.volatility?.h4BBW || "N/A") + "%" },
+    { l: "VOL REGIME",  v: m.volatility?.regime || "N/A" },
+    { l: "FUNDING",     v: m.derivatives?.fundingRate || "N/A" },
+    { l: "LONG RATIO",  v: m.derivatives?.lsRatio?.longRatio || "N/A" },
+    { l: "SHORT RATIO", v: m.derivatives?.lsRatio?.shortRatio || "N/A" },
+    { l: "BTC TREND",   v: m.btcContext?.trend || "N/A" },
+    { l: "OI",          v: m.derivatives?.oi ? parseFloat(m.derivatives.oi.value).toLocaleString() : "N/A" },
+  ];
+
+  metricsGrid.innerHTML = items.map(i =>
+    `<div class="metric">
+      <div class="m-label">${i.l}</div>
+      <div class="m-value ${colorClass(i.v)}">${i.v}</div>
+    </div>`
+  ).join("");
+
+  renderEMATable(m.ema);
+}
+
+function trendTag(t) {
+  if (!t) return "<span class='tag neut'>N/A</span>";
+  const u = t.toUpperCase();
+  if (u === "STRONG BULLISH")        return `<span class='tag sb'>${t}</span>`;
+  if (u === "TRANSITIONING BULLISH") return `<span class='tag sb2'>${t}</span>`;
+  if (u === "STRONG BEARISH")        return `<span class='tag bear'>${t}</span>`;
+  if (u === "TRANSITIONING BEARISH") return `<span class='tag bear2'>${t}</span>`;
+  return `<span class='tag neut'>${t}</span>`;
+}
+
+function renderEMATable(ema) {
+  if (!ema) return;
+  emaTbody.innerHTML = [["DAILY", ema.daily], ["4H", ema.h4], ["1H", ema.h1]].map(([tf, e]) =>
+    `<tr>
+      <td style="color:var(--text2);font-weight:700">${tf}</td>
+      <td>${f(e?.ema20)}</td>
+      <td>${f(e?.ema50)}</td>
+      <td>${f(e?.ema200)}</td>
+      <td>${trendTag(e?.trend)}</td>
+    </tr>`
+  ).join("");
+}
+
+// ── Decision banner ─────────────────────────────────
+function applyDecision(decision, confidence) {
+  if (!decision) return;
+  const C = {
+    LONG:      { fg: "#00ff88", bg: "rgba(0,255,136,0.07)",  bd: "rgba(0,255,136,0.35)" },
+    SHORT:     { fg: "#ff3355", bg: "rgba(255,51,85,0.07)",  bd: "rgba(255,51,85,0.35)" },
+    "NO TRADE":{ fg: "#ffbb00", bg: "rgba(255,187,0,0.07)",  bd: "rgba(255,187,0,0.35)" },
+  };
+  const c = C[decision] || C["NO TRADE"];
+
+  decisionCard.style.cssText = `background:${c.bg};border-color:${c.bd};padding:18px;text-align:center;`;
+  decisionVal.style.cssText = `color:${c.fg};text-shadow:0 0 22px ${c.fg}77;font-family:var(--hdr);font-size:clamp(22px,5vw,34px);font-weight:900;letter-spacing:5px;`;
+  decisionVal.textContent = decision;
+
+  if (confidence != null) {
+    const cFg = confidence >= 90 ? "#00ff88" : confidence >= 75 ? "#88ff44" : confidence >= 60 ? "#ffbb00" : "#ff3355";
+    confCard.style.cssText = `border-color:${cFg}55;background:${cFg}09;display:flex;flex-direction:column;justify-content:center;min-width:105px;padding:18px;text-align:center;`;
+    confVal.style.cssText = `color:${cFg};text-shadow:0 0 18px ${cFg}66;font-family:var(--hdr);font-size:34px;font-weight:900;`;
+    confVal.textContent = confidence;
+  }
+
+  decisionWrap.style.display = "grid";
+}
+
+function parseResult(text) {
+  const dm = text.match(/LONG \/ SHORT \/ NO TRADE\s*\n+([A-Z\s\-—]+)/);
+  let decision = null;
+  if (dm) {
+    const d = dm[1].trim();
+    if (d.startsWith("LONG"))     decision = "LONG";
+    else if (d.startsWith("SHORT"))    decision = "SHORT";
+    else if (d.includes("NO TRADE")) decision = "NO TRADE";
+  }
+  const cm = text.match(/CONFIDENCE SCORE:\s*(\d+)/);
+  return { decision, confidence: cm ? parseInt(cm[1]) : null };
+}
+
+// ── Highlight output ────────────────────────────────
+function highlight(text) {
+  return text
+    .replace(/(━+)/g, `<span style="color:var(--border2)">$1</span>`)
+    .replace(/\b(LONG)\b/g,     `<span style="color:var(--green);font-weight:700">LONG</span>`)
+    .replace(/\b(SHORT)\b/g,    `<span style="color:var(--red);font-weight:700">SHORT</span>`)
+    .replace(/\b(NO TRADE)\b/g, `<span style="color:var(--yellow);font-weight:700">NO TRADE</span>`);
+}
+
+// ── Run analysis ────────────────────────────────────
+async function runAnalysis() {
+  if (isRunning) return;
+  const symbol = (customPair.value.trim() || selectedPair).toUpperCase();
+  if (!symbol) { showError("Select or enter a trading pair."); return; }
+
+  isRunning = true;
+  fullText  = "";
+
+  showError("");
+  setStatus(`📡 Connecting to analysis engine for ${symbol}...`);
+  outputBody.innerHTML = "";
+  metricsGrid.innerHTML = "";
+  emaTbody.innerHTML = "";
+  decisionWrap.style.display = "none";
+  metricsWrap.style.display  = "none";
+  outputWrap.style.display   = "none";
+  liveBadge.style.display    = "flex";
+
+  btnRun.disabled = true;
+  btnRun.innerHTML = `<span class="spin">⟳</span> &nbsp; ANALYZING ${symbol}...`;
+
+  if (activeSSE) { activeSSE.close(); activeSSE = null; }
+
+  const evtSrc = new EventSource(`/api/analyze?symbol=${encodeURIComponent(symbol)}`);
+  activeSSE = evtSrc;
+
+  evtSrc.addEventListener("status", e => {
+    setStatus(JSON.parse(e.data).message);
+  });
+
+  evtSrc.addEventListener("metrics", e => {
+    const d = JSON.parse(e.data);
+    renderMetrics(d);
+    metricsWrap.style.display = "block";
+    metricsWrap.classList.add("fade");
+  });
+
+  evtSrc.addEventListener("token", e => {
+    fullText += JSON.parse(e.data).text;
+    outputBody.innerHTML = highlight(fullText);
+    outputBody.scrollTop = outputBody.scrollHeight;
+    outputWrap.style.display = "block";
+
+    const { decision, confidence } = parseResult(fullText);
+    if (decision) applyDecision(decision, confidence);
+  });
+
+  evtSrc.addEventListener("done", () => {
+    setStatus("✅ Analysis complete — " + new Date().toLocaleTimeString());
+    liveBadge.style.display = "none";
+    done();
+  });
+
+  evtSrc.addEventListener("error", e => {
+    try { showError(JSON.parse(e.data).message); } catch { showError("Server error. Check Vercel logs."); }
+    setStatus("");
+    liveBadge.style.display = "none";
+    done();
+  });
+
+  evtSrc.onerror = () => {
+    if (evtSrc.readyState === EventSource.CLOSED) return;
+    showError("Connection lost. Check that ANTHROPIC_API_KEY is set in Vercel → Settings → Environment Variables.");
+    setStatus("");
+    liveBadge.style.display = "none";
+    done();
+  };
+
+  function done() {
+    evtSrc.close();
+    activeSSE = null;
+    isRunning = false;
+    btnRun.disabled = false;
+    btnRun.innerHTML = "▶ &nbsp; RUN INSTITUTIONAL ANALYSIS";
+  }
+}
+
+btnRun.addEventListener("click", runAnalysis);
+initPairs();
+</script>
+</body>
+</html>

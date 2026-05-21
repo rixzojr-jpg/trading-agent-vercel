@@ -1,0 +1,17 @@
+{
+  "name": "trading-agent-ai",
+  "version": "1.0.0",
+  "description": "Institutional-grade crypto futures AI trading agent — MA × VMC × S&R × Smart Money",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev":   "vercel dev",
+    "build": "echo 'No build step required'",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^39.0.0"
+  }
+}
