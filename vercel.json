@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "functions": {
+    "api/analyze.js":  { "maxDuration": 300 },
+    "api/market.js":   { "maxDuration": 60  },
+    "api/pairs.js":    { "maxDuration": 30  },
+    "api/health.js":   { "maxDuration": 10  },
+    "api/feedback.js": { "maxDuration": 15  },
+    "api/history.js":  { "maxDuration": 30  }
+  },
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)",     "dest": "/index.html" }
+  ]
+}
