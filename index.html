@@ -537,7 +537,7 @@ $("btnRun").addEventListener("click",runAnalysis);
 function selOutcome(o){
   selOutc=o;
   document.querySelectorAll(".fbb").forEach(b=>b.classList.toggle("sel",b.classList.contains(o==="breakeven"?"be":o)));
-  $("btnSFb").disabled=!curId;
+  $("btnSFb").disabled=false;
 }
 
 async function submitFb(){
