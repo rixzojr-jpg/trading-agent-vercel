@@ -536,16 +536,28 @@ $("btnRun").addEventListener("click",runAnalysis);
 // ── Feedback ──────────────────────────────────────────
 function selOutcome(o){
   selOutc=o;
-  document.querySelectorAll(".fbb").forEach(b=>b.classList.toggle("sel",b.classList.contains(o==="breakeven"?"be":o)));
+  // Fix class toggle — breakeven uses class "be", others match name
+  document.querySelectorAll(".fbb").forEach(b=>{
+    b.classList.remove("sel");
+    const match = o==="breakeven" ? b.classList.contains("be") : b.classList.contains(o);
+    if(match) b.classList.add("sel");
+  });
+  // Enable button as soon as outcome is selected — curId not required
   $("btnSFb").disabled=false;
 }
 
 async function submitFb(){
-  if(!curId||!selOutc)return;
+  if(!selOutc){
+    $("fbRes").style.color="var(--yellow)";
+    $("fbRes").textContent="⚠ Pilih outcome dulu (PROFIT / LOSS / BREAKEVEN)";
+    return;
+  }
+  // Use curId if available, fallback to timestamp-based ID
+  const useId = curId || `manual-${Date.now()}`;
   $("btnSFb").disabled=true;$("btnSFb").textContent="SAVING...";$("fbRes").textContent="";
   try{
     const pnl=$("pnlInput").value.trim()||null;
-    const r=await fetch("/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:curId,outcome:selOutc,pnl})});
+    const r=await fetch("/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:useId,outcome:selOutc,pnl})});
     const d=await r.json();
     if(d.success){
       const e=selOutc==="profit"?"✅":selOutc==="loss"?"❌":"➖";
