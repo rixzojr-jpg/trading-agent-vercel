@@ -12,6 +12,30 @@ const hdrs = () => ({
   "Prefer": "return=minimal",
 });
 
+async function sbGet(table, params) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    headers: { "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
+    signal: AbortSignal.timeout(4000),
+  });
+  return r.ok ? await r.json() : [];
+}
+
+async function sbPost(table, data) {
+  return fetch(`${SB_URL}/rest/v1/${table}`, {
+    method: "POST", headers: hdrs(),
+    body: JSON.stringify(data),
+    signal: AbortSignal.timeout(4000),
+  });
+}
+
+async function sbPatch(table, filter, data) {
+  return fetch(`${SB_URL}/rest/v1/${table}?${filter}`, {
+    method: "PATCH", headers: hdrs(),
+    body: JSON.stringify(data),
+    signal: AbortSignal.timeout(4000),
+  });
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -31,70 +55,52 @@ export default async function handler(req, res) {
     if (!["profit", "loss", "breakeven"].includes(outcome))
       return res.status(400).json({ error: "outcome must be: profit | loss | breakeven" });
 
+    const now = new Date().toISOString();
     const useId = id || `manual-${Date.now()}`;
-    const isManual = useId.startsWith("manual-");
+    const isManual = !id || id.startsWith("manual-");
 
     let analysis = null;
 
     if (!isManual) {
-      // Try to get existing analysis
-      const r = await fetch(`${SB_URL}/rest/v1/analyses?id=eq.${useId}`, {
-        headers: { "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-        signal: AbortSignal.timeout(4000),
-      });
-      const rows = await r.json();
+      // Cari analisis yang ada
+      const rows = await sbGet("analyses", `id=eq.${useId}`);
       analysis = rows?.[0] || null;
     }
 
     if (analysis) {
-      // Update existing analysis outcome
-      await fetch(`${SB_URL}/rest/v1/analyses?id=eq.${useId}`, {
-        method: "PATCH",
-        headers: hdrs(),
-        body: JSON.stringify({
-          outcome,
-          pnl: pnl || null,
-          recorded_at: new Date().toISOString(),
-        }),
-        signal: AbortSignal.timeout(4000),
+      // Update outcome di analisis yang ada
+      await sbPatch("analyses", `id=eq.${useId}`, {
+        outcome,
+        pnl: pnl || null,
+        recorded_at: now,
       });
     } else {
-      // Insert new record for manual entry
-      await fetch(`${SB_URL}/rest/v1/analyses`, {
-        method: "POST",
-        headers: hdrs(),
-        body: JSON.stringify({
-          id: useId,
-          symbol: symbol || "MANUAL",
-          signal: signal || null,
-          confidence: confidence ? parseInt(confidence) : null,
-          entry: entry || null,
-          outcome,
-          pnl: pnl || null,
-          recorded_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        }),
-        signal: AbortSignal.timeout(4000),
+      // Buat record baru untuk manual entry
+      await sbPost("analyses", {
+        id: useId,
+        symbol: symbol || "MANUAL",
+        signal: signal || null,
+        confidence: confidence ? parseInt(confidence) : null,
+        entry: entry || null,
+        outcome,
+        pnl: pnl || null,
+        recorded_at: now,
+        created_at: now,
       });
     }
 
-    // Always insert into memory table for AI learning
-    await fetch(`${SB_URL}/rest/v1/memory`, {
-      method: "POST",
-      headers: hdrs(),
-      body: JSON.stringify({
-        symbol:     analysis?.symbol || symbol || "MANUAL",
-        signal:     analysis?.signal || signal || null,
-        confidence: analysis?.confidence || (confidence ? parseInt(confidence) : null),
-        entry:      analysis?.entry || entry || null,
-        stop_loss:  analysis?.stop_loss || null,
-        take_profit:analysis?.take_profit || null,
-        outcome,
-        pnl: pnl || null,
-        market_snapshot: analysis?.market_snapshot || null,
-        created_at: new Date().toISOString(),
-      }),
-      signal: AbortSignal.timeout(4000),
+    // Simpan ke memory untuk AI learning
+    await sbPost("memory", {
+      symbol:      analysis?.symbol || symbol || "MANUAL",
+      signal:      analysis?.signal || signal || null,
+      confidence:  analysis?.confidence || (confidence ? parseInt(confidence) : null),
+      entry:       analysis?.entry || entry || null,
+      stop_loss:   analysis?.stop_loss || null,
+      take_profit: analysis?.take_profit || null,
+      outcome,
+      pnl:         pnl || null,
+      market_snapshot: analysis?.market_snapshot || null,
+      created_at:  now,
     });
 
     return res.status(200).json({
@@ -102,7 +108,7 @@ export default async function handler(req, res) {
       message: `✅ Outcome "${outcome}" saved to AI memory`,
       id: useId,
       outcome,
-      isManual,
+      symbol: analysis?.symbol || symbol || "MANUAL",
     });
 
   } catch (err) {
