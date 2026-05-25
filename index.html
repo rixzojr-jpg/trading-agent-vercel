@@ -314,4 +314,538 @@
   <div class="footer">
     ⚠ FOR EDUCATIONAL PURPOSES ONLY · NOT FINANCIAL ADVICE · TRADE AT YOUR OWN RISK<br>
     DATA: BINGX API · AI: HERMES-3 via OPENROUTER · DB: SUPABASE · DEPLOY: VERCEL<br>
-    FRAMEWORK: 1D EMA13/21 →
+    FRAMEWORK: 1D EMA13/21 → 4H EMA20/50 → 1H EXECUTION · THRESHOLD: SCORE ≥ 75
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  TRADING AGENT v2 — Institutional Decision Engine
+// ═══════════════════════════════════════════════════
+const DEFAULT_PAIRS=["BTC-USDT","ETH-USDT","SOL-USDT","BNB-USDT","XRP-USDT","DOGE-USDT","AVAX-USDT","MATIC-USDT","LINK-USDT","ARB-USDT","OP-USDT","SUI-USDT","APT-USDT","INJ-USDT","TIA-USDT"];
+let selPair="BTC-USDT",running=false,sse=null,txt="";
+let analysisMap={},selOutc=null,histOpen=false,histLoaded=false;
+let activeFeedbackSymbol=null;
+
+const $=id=>document.getElementById(id);
+
+// ── Init pairs ──────────────────────────────────────
+async function initPairs(){
+  let pairs=DEFAULT_PAIRS;
+  try{const r=await fetch("/api/pairs");const d=await r.json();if(d.pairs?.length)pairs=d.pairs;}catch{}
+  const g=$("pairGrid"); g.innerHTML="";
+  pairs.forEach(p=>{
+    const b=document.createElement("button");
+    b.className="pb2"+(p===selPair?" active":"");
+    b.textContent=p;
+    b.onclick=()=>{selPair=p;$("customPair").value="";document.querySelectorAll(".pb2").forEach(x=>x.classList.remove("active"));b.classList.add("active");};
+    g.appendChild(b);
+  });
+}
+$("customPair").addEventListener("input",()=>{const v=$("customPair").value.toUpperCase().trim();if(v){selPair=v;document.querySelectorAll(".pb2").forEach(x=>x.classList.remove("active"));}});
+$("customPair").addEventListener("keydown",e=>{if(e.key==="Enter"&&!running)runAnalysis();});
+
+// ── Helpers ──────────────────────────────────────────
+const setStat=msg=>$("status").textContent=msg;
+function showErr(msg){$("errBox").textContent="⚠  "+msg;$("errBox").style.display=msg?"block":"none";}
+const f=(v,d=4)=>v!=null?parseFloat(v).toFixed(d):"N/A";
+function cc(v){const s=String(v||"").toUpperCase();if(s.includes("STRONG BULLISH")||s.includes("BULLISH BOS"))return"bull";if(s.includes("STRONG BEARISH")||s.includes("BEARISH BOS"))return"bear";if(s.includes("BULLISH")||s.includes("BULL"))return"bull";if(s.includes("BEARISH")||s.includes("BEAR"))return"bear";if(s.includes("EXPANSION")||s.includes("RISING"))return"neut";return"";}
+
+// ── Pre-score bar ─────────────────────────────────────
+function renderPreScore(score){
+  const wrap=$("prescoreWrap"),fill=$("psFill"),num=$("psNum"),msg=$("psMsg");
+  const color=score>=75?"var(--green)":score>=50?"var(--yellow)":"var(--red)";
+  fill.style.width=score+"%"; fill.style.background=color;
+  num.textContent=score; num.style.color=color;
+  const grade=score>=95?"EXCEPTIONAL":score>=90?"VERY HIGH":score>=85?"HIGH PROBABILITY":score>=75?"TRADABLE":score>=50?"MARGINAL — AI evaluating":"BELOW THRESHOLD — NO TRADE";
+  msg.textContent=`Pre-score: ${score}/100 — ${grade}`;
+  msg.style.color=color;
+  wrap.style.display="block";
+}
+
+// ── EMA blocks ─────────────────────────────────────────
+function renderEMA(ema){
+  if(!ema)return;
+  const trendCls=t=>{if(!t)return"neut";const u=t.toUpperCase();if(u==="BULLISH"||u==="STRONG BULLISH")return"sb";if(u.includes("TRANS")||u.includes("BULLISH"))return"sb2";if(u==="BEARISH"||u==="STRONG BEARISH")return"bear";if(u.includes("BEAR"))return"bear2";return"neut";};
+
+  $("emaGrid").innerHTML=`
+    <div class="ema-block">
+      <div class="ema-tf">1D MACRO</div>
+      <div class="ema-row"><span class="ema-key">EMA 13</span><span class="ema-val">${ema.daily?.ema13||"N/A"}</span></div>
+      <div class="ema-row"><span class="ema-key">EMA 21</span><span class="ema-val">${ema.daily?.ema21||"N/A"}</span></div>
+      <div class="ema-row"><span class="ema-key">SLOPE</span><span class="ema-val">${ema.daily?.slope||"N/A"}</span></div>
+      <div><span class="ema-trend ${trendCls(ema.daily?.trend)}">${ema.daily?.trend||"N/A"}</span></div>
+    </div>
+    <div class="ema-block">
+      <div class="ema-tf">4H STRUCTURE</div>
+      <div class="ema-row"><span class="ema-key">EMA 20</span><span class="ema-val">${ema.h4?.ema20||"N/A"}</span></div>
+      <div class="ema-row"><span class="ema-key">EMA 50</span><span class="ema-val">${ema.h4?.ema50||"N/A"}</span></div>
+      <div class="ema-row"><span class="ema-key">SLOPE</span><span class="ema-val">${ema.h4?.slope||"N/A"}</span></div>
+      <div><span class="ema-trend ${trendCls(ema.h4?.trend)}">${ema.h4?.trend||"N/A"}</span></div>
+    </div>
+    <div class="ema-block">
+      <div class="ema-tf">1H EXECUTION</div>
+      <div class="ema-row"><span class="ema-key">EMA 20</span><span class="ema-val">${ema.h1?.ema20||"N/A"}</span></div>
+      <div class="ema-row"><span class="ema-key">EMA 50</span><span class="ema-val">${ema.h1?.ema50||"N/A"}</span></div>
+      <div class="ema-row"><span class="ema-key">BIAS</span><span class="ema-val">${ema.h1?.trend||"N/A"}</span></div>
+      <div><span class="ema-trend ${trendCls(ema.h1?.trend)}">${ema.h1?.trend||"N/A"}</span></div>
+    </div>`;
+}
+
+// ── Metrics grid ──────────────────────────────────────
+function renderMetrics(m){
+  if(!m)return;
+  const items=[
+    {l:"PRICE",       v:"$"+parseFloat(m.price||0).toLocaleString()},
+    {l:"24H CHANGE",  v:(m.change24h||"N/A")+"%"},
+    {l:"PRE-SCORE",   v:(m.preScore||0)+"/100"},
+    {l:"BIAS",        v:m.bias||"N/A"},
+    {l:"WT DAILY",    v:m.wavetrend?.daily??'N/A'},
+    {l:"WT 4H",       v:m.wavetrend?.h4??'N/A'},
+    {l:"WT 1H",       v:m.wavetrend?.h1??'N/A'},
+    {l:"4H ATR",      v:m.volatility?.h4ATR||"N/A"},
+    {l:"4H BBW",      v:(m.volatility?.h4BBW||"N/A")+"%"},
+    {l:"REGIME",      v:m.volatility?.regime||"N/A"},
+    {l:"OI",          v:m.derivatives?.oi||"N/A"},
+    {l:"FUNDING",     v:m.derivatives?.funding||"N/A"},
+    {l:"L/S RATIO",   v:m.derivatives?.lsRatio||"N/A"},
+    {l:"4H STRUCT",   v:m.structure?.h4?.trend||"N/A"},
+    {l:"4H BOS",      v:m.structure?.h4?.bos||"N/A"},
+    {l:"BTC",         v:m.btcContext||"N/A"},
+  ];
+  $("mg").innerHTML=items.map(i=>`<div class="m"><div class="ml">${i.l}</div><div class="mv ${cc(i.v)}">${i.v}</div></div>`).join("");
+  renderEMA(m.ema);
+  renderPreScore(m.preScore||0);
+  $("metricsWrap").style.display="block";
+}
+
+// ── Decision banner ───────────────────────────────────
+function applyDecision(signal,confidence,regime){
+  if(!signal)return;
+  const isNT=signal.includes("NO TRADE");
+  const C={LONG:{fg:"#00ff88",bg:"rgba(0,255,136,0.07)",bd:"rgba(0,255,136,0.35)"},SHORT:{fg:"#ff3355",bg:"rgba(255,51,85,0.07)",bd:"rgba(255,51,85,0.35)"},"NO TRADE":{fg:"#ffbb00",bg:"rgba(255,187,0,0.07)",bd:"rgba(255,187,0,0.35)"}};
+  const c=C[signal]||C["NO TRADE"];
+  $("decCard").style.cssText=`background:${c.bg};border-color:${c.bd};padding:16px;text-align:center;`;
+  $("decVal").style.cssText=`color:${c.fg};text-shadow:0 0 20px ${c.fg}77;font-family:var(--hdr);font-size:clamp(20px,4vw,30px);font-weight:900;letter-spacing:5px;`;
+  $("decVal").textContent=signal;
+  if(confidence!=null&&!isNT){
+    const cf=confidence>=90?"#00ff88":confidence>=75?"#88ff44":confidence>=60?"#ffbb00":"#ff3355";
+    $("confCard").style.cssText=`border-color:${cf}55;background:${cf}09;display:flex;flex-direction:column;justify-content:center;min-width:90px;padding:16px;text-align:center;`;
+    $("confVal").style.cssText=`color:${cf};text-shadow:0 0 16px ${cf}66;font-family:var(--hdr);font-size:30px;font-weight:900;`;
+    $("confVal").textContent=confidence;
+  }
+  if(regime){
+    $("regVal").textContent=regime;
+    $("regVal").style.color=regime.includes("EXPANSION")||regime.includes("HIGH")?"var(--yellow)":"var(--text2)";
+  }
+  $("decWrap").style.display="grid";
+}
+
+function parseOut(text){
+  const g=rx=>(text.match(rx)||[])[1]?.trim()||null;
+  const isNT=/^NO TRADE\s*$/m.test(text.trim());
+  return{
+    isNT,
+    signal:     isNT?"NO TRADE":(g(/^BIAS:\s*(.+)/m) || g(/^SIGNAL:\s*(.+)/m)),
+    confidence: g(/^CONFIDENCE:\s*(\d+)/m),
+    regime:     g(/^MARKET REGIME:\s*(.+)/m),
+    entry:      g(/^ENTRY:\s*(.+)/m),
+    sl:         g(/^SL:\s*(.+)/m),
+    tp:         g(/^TP:\s*(.+)/m),
+    rr:         g(/^RR:\s*(.+)/m),
+  };
+}
+
+function hl(t){
+  return t
+    .replace(/(━+)/g,'<span style="color:var(--border2)">$1</span>')
+    .replace(/\b(LONG)\b/g,'<span style="color:var(--green);font-weight:700">LONG</span>')
+    .replace(/\b(SHORT)\b/g,'<span style="color:var(--red);font-weight:700">SHORT</span>')
+    .replace(/\b(NO TRADE)\b/g,'<span style="color:var(--yellow);font-weight:700">NO TRADE</span>');
+}
+
+// ── Run analysis ──────────────────────────────────────
+async function runAnalysis(){
+  if(running)return;
+  const targetSymbol = ($("customPair").value.trim()||selPair).toUpperCase();
+  if(!targetSymbol){showErr("Select a pair.");return;}
+
+  running=true;txt="";selOutc=null;
+  showErr("");setStat(`📡 Connecting for ${targetSymbol}...`);
+  $("outBody").innerHTML="";$("mg").innerHTML="";$("emaGrid").innerHTML="";
+  $("decWrap").style.display="none";$("metricsWrap").style.display="none";
+  $("outWrap").style.display="none";
+  $("prescoreWrap").style.display="none";
+  $("liveBadge").style.display="flex";
+  
+  $("fbRes").textContent="";
+  $("btnSFb").disabled=true;selOutc=null;
+  document.querySelectorAll(".fbb").forEach(b=>b.classList.remove("sel"));
+
+  if(!analysisMap[targetSymbol]) analysisMap[targetSymbol] = { isNoTrade: false };
+  activeFeedbackSymbol = targetSymbol;
+  renderFbPairBtns();
+
+  $("btnRun").disabled=true;
+  $("btnRun").innerHTML=`<span class="spin">⟳</span> &nbsp; ANALYZING ${targetSymbol}...`;
+
+  if(sse){sse.close();sse=null;}
+
+  const es=new EventSource(`/api/analyze?symbol=${encodeURIComponent(targetSymbol)}`);
+  sse=es;
+
+  es.addEventListener("status", e=>setStat(JSON.parse(e.data).message));
+
+  es.addEventListener("metrics", e=>{
+    const d=JSON.parse(e.data);
+    if(d.id){
+      analysisMap[targetSymbol] = { ...analysisMap[targetSymbol], id: d.id, symbol: targetSymbol };
+    }
+    renderMetrics(d);
+  });
+
+  es.addEventListener("token", e=>{
+    txt+=JSON.parse(e.data).text;
+    $("outBody").innerHTML=hl(txt);
+    $("outBody").scrollTop=$("outBody").scrollHeight;
+    $("outWrap").style.display="block";
+    const{signal,confidence,regime}=parseOut(txt);
+    if(signal)applyDecision(signal,confidence?parseInt(confidence):null,regime);
+  });
+
+  es.addEventListener("analysis_id", e=>{
+    const d=JSON.parse(e.data);
+    
+    analysisMap[targetSymbol] = {
+      ...analysisMap[targetSymbol],
+      id:         d.id || analysisMap[targetSymbol]?.id,
+      symbol:     targetSymbol,
+      signal:     d.signal,
+      confidence: d.confidence,
+      entry:      d.entry,
+      stopLoss:   d.stopLoss,
+      takeProfit: d.takeProfit,
+      rr:         d.rr,
+      isNoTrade:  d.isNoTrade,
+      timestamp:  new Date().toISOString(),
+    };
+    
+    if(!d.isNoTrade && activeFeedbackSymbol === targetSymbol){
+      $("fbMeta").textContent=`${targetSymbol} | ${d.signal||"?"} | Score:${d.confidence||"?"} | Entry:${d.entry||"?"} | SL:${d.stopLoss||"?"} | ID:...${(d.id||"").slice(-8)}`;
+    }
+  });
+
+  es.addEventListener("done", ()=>{
+    setStat("✅ Analysis complete — "+new Date().toLocaleTimeString());
+    $("liveBadge").style.display="none";
+    
+    const out = parseOut(txt);
+    if (!analysisMap[targetSymbol].signal && out.signal) {
+       analysisMap[targetSymbol] = {
+         ...analysisMap[targetSymbol],
+         symbol: targetSymbol,
+         signal: out.signal,
+         confidence: out.confidence,
+         entry: out.entry,
+         stopLoss: out.sl,
+         takeProfit: out.tp,
+         rr: out.rr,
+         isNoTrade: out.isNT,
+         timestamp: new Date().toISOString(),
+       };
+    }
+
+    const validPairs = Object.keys(analysisMap).filter(k=>!analysisMap[k].isNoTrade);
+    if(validPairs.length > 0){
+      if(analysisMap[targetSymbol] && !analysisMap[targetSymbol].isNoTrade){
+         setActiveFbPair(targetSymbol);
+      } else if (!validPairs.includes(activeFeedbackSymbol)) {
+         setActiveFbPair(validPairs[0]);
+      } else {
+         renderFbPairBtns();
+      }
+      $("fbWrap").style.display="block";
+      $("fbWrap").scrollIntoView({behavior:"smooth",block:"nearest"});
+    } else {
+      $("fbWrap").style.display="none";
+    }
+    done();
+  });
+
+  es.addEventListener("error", e=>{
+    try{showErr(JSON.parse(e.data).message);}catch{showErr("Server error. Check Vercel function logs.");}
+    setStat("");$("liveBadge").style.display="none";done();
+  });
+
+  es.onerror=()=>{
+    if(es.readyState===EventSource.CLOSED)return;
+    showErr("Connection lost. Verify OPENROUTER_API_KEY in Vercel → Settings → Environment Variables.");
+    setStat("");$("liveBadge").style.display="none";done();
+  };
+
+  function done(){es.close();sse=null;running=false;$("btnRun").disabled=false;$("btnRun").innerHTML="▶ &nbsp; RUN INSTITUTIONAL ANALYSIS";}
+}
+$("btnRun").addEventListener("click",runAnalysis);
+
+// ── Feedback ──────────────────────────────────────────
+function renderFbPairBtns(){
+  const btns=$("fbPairBtns");
+  if(!btns)return;
+  const validPairs=Object.keys(analysisMap).filter(p=>!analysisMap[p].isNoTrade);
+  if(!validPairs.length){
+    btns.innerHTML="<span style='font-size:9px;color:var(--text3);letter-spacing:2px'>TIDAK ADA ANALISIS AKTIF</span>";
+    $("fbMeta").textContent="— Run analisis pair baru untuk memulai —";
+    $("btnSFb").disabled=true;
+    return;
+  }
+  btns.innerHTML=validPairs.map(p=>{
+    const a=analysisMap[p];
+    const isActive=activeFeedbackSymbol===p;
+    const sigColor=a.signal==="LONG"?"#00ff88":a.signal==="SHORT"?"#ff3355":"#ffbb00";
+    const bgColor=isActive?"rgba(0,170,255,0.12)":"#071528";
+    const bdColor=isActive?"#00aaff":"#0d2a47";
+    const txColor=isActive?"#00aaff":"#4a7a9c";
+    const elapsed=a.timestamp?Math.floor((Date.now()-new Date(a.timestamp))/60000):0;
+    const timeStr=elapsed<1?"baru saja":elapsed<60?elapsed+"m ago":Math.floor(elapsed/60)+"h ago";
+    return `<div style="display:flex;align-items:center;gap:0;margin-bottom:4px">
+      <button
+        onclick="setActiveFbPair('${p}')"
+        style="background:${bgColor};border:1px solid ${bdColor};border-right:none;
+               color:${txColor};font-family:var(--mono);font-size:9px;
+               padding:6px 12px;cursor:pointer;letter-spacing:1px;
+               transition:all 0.15s;flex:1;text-align:left">
+        <span style="color:${sigColor};font-weight:700">${a.signal||"?"}</span>
+        &nbsp;${p}&nbsp;
+        <span style="color:#1e3a52;font-size:8px">${timeStr}</span>
+        ${isActive?'<span style="color:#00aaff;font-size:8px;margin-left:4px">◀ AKTIF</span>':""}
+      </button>
+      <button
+        onclick="cancelPair('${p}')"
+        title="Batalkan / hapus analisis ${p}"
+        style="background:#1a0508;border:1px solid rgba(255,51,85,0.3);
+               color:#ff3355;font-family:var(--mono);font-size:9px;
+               padding:6px 10px;cursor:pointer;transition:all 0.15s;
+               white-space:nowrap"
+        onmouseover="this.style.background='rgba(255,51,85,0.15)'"
+        onmouseout="this.style.background='#1a0508'">
+        ✕ CANCEL
+      </button>
+    </div>`;
+  }).join("");
+}
+
+function cancelPair(symbol){
+  if(activeFeedbackSymbol===symbol){
+    activeFeedbackSymbol=null;
+    selOutc=null;
+    $("fbMeta").textContent="— Pilih pair di atas lalu record hasil trade —";
+    $("fbRes").textContent="";
+    $("btnSFb").disabled=true;
+    $("pnlInput").value="";
+    document.querySelectorAll(".fbb").forEach(b=>b.classList.remove("sel"));
+  }
+  delete analysisMap[symbol];
+  renderFbPairBtns();
+  const remaining=Object.keys(analysisMap).filter(p=>!analysisMap[p].isNoTrade);
+  if(!remaining.length){
+    $("fbWrap").style.display="none";
+  }
+}
+
+function setActiveFbPair(symbol){
+  activeFeedbackSymbol=symbol;
+  selOutc=null;
+  $("pnlInput").value="";
+  $("fbRes").textContent="";
+  $("btnSFb").disabled=true;
+  document.querySelectorAll(".fbb").forEach(b=>b.classList.remove("sel"));
+
+  const a=analysisMap[symbol];
+  if(a){
+    $("fbMeta").textContent=
+      `${symbol} | ${a.signal||"?"} | Score:${a.confidence||"?"} | Entry:${a.entry||"?"} | SL:${a.stopLoss||"?"} | TP:${a.takeProfit||"?"}`;
+  }
+  renderFbPairBtns();
+}
+
+function selOutcome(o){
+  if(!activeFeedbackSymbol){
+    $("fbRes").style.color="var(--yellow)";
+    $("fbRes").textContent="⚠ Pilih pair dulu di atas";
+    return;
+  }
+  selOutc=o;
+  document.querySelectorAll(".fbb").forEach(b=>{
+    b.classList.remove("sel");
+    const match=o==="breakeven"?b.classList.contains("be"):b.classList.contains(o);
+    if(match)b.classList.add("sel");
+  });
+  $("btnSFb").disabled=false;
+}
+
+async function submitFb(){
+  if(!selOutc){
+    $("fbRes").style.color="var(--yellow)";
+    $("fbRes").textContent="⚠ Pilih outcome dulu (PROFIT / LOSS / BREAKEVEN)";
+    return;
+  }
+  if(!activeFeedbackSymbol){
+    $("fbRes").style.color="var(--yellow)";
+    $("fbRes").textContent="⚠ Pilih pair dulu";
+    return;
+  }
+  const activeAnalysis = analysisMap[activeFeedbackSymbol] || {};
+  const useId = activeAnalysis.id || `manual-${Date.now()}`;
+  $("btnSFb").disabled=true;$("btnSFb").textContent="SAVING...";$("fbRes").textContent="";
+  try{
+    const pnl=$("pnlInput").value.trim()||null;
+    const r=await fetch("/api/feedback",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        id:         useId,
+        outcome:    selOutc,
+        pnl,
+        symbol:     activeFeedbackSymbol,
+        signal:     activeAnalysis.signal,
+        confidence: activeAnalysis.confidence,
+        entry:      activeAnalysis.entry,
+      })
+    });
+    const d=await r.json();
+    if(d.success){
+      const e=selOutc==="profit"?"✅":selOutc==="loss"?"❌":"➖";
+      $("fbRes").style.color=selOutc==="profit"?"var(--green)":selOutc==="loss"?"var(--red)":"var(--yellow)";
+      $("fbRes").textContent=`${e} ${activeFeedbackSymbol} ${selOutc.toUpperCase()} saved. Hermes will use this next time.`;
+      $("btnSFb").textContent="✅ SAVED";
+      
+      delete analysisMap[activeFeedbackSymbol];
+      
+      const remaining = Object.keys(analysisMap).filter(p=>!analysisMap[p].isNoTrade);
+      if(remaining.length > 0){
+         setActiveFbPair(remaining[0]);
+      } else {
+         activeFeedbackSymbol = null;
+         renderFbPairBtns();
+         $("fbWrap").style.display="none";
+      }
+
+      if(histOpen)loadHist();
+    }else{
+      $("fbRes").style.color="var(--red)";
+      $("fbRes").textContent="⚠ "+(d.error||"Failed — is Supabase configured?");
+      $("btnSFb").disabled=false;$("btnSFb").textContent="SAVE TO AI MEMORY";
+    }
+  }catch(err){
+    $("fbRes").style.color="var(--red)";$("fbRes").textContent="⚠ "+err.message;
+    $("btnSFb").disabled=false;$("btnSFb").textContent="SAVE TO AI MEMORY";
+  }
+}
+
+// ── History ───────────────────────────────────────────
+function toggleHist(){
+  histOpen=!histOpen;
+  $("hw").style.display=histOpen?"block":"none";
+  $("histArrow").textContent=histOpen?"▲":"▼";
+  if(histOpen&&!histLoaded)loadHist();
+}
+
+async function loadHist(symbol=null){
+  histLoaded=true;
+  $("hList").innerHTML=`<div class="hempty"><span class="spin">⟳</span> Loading...</div>`;
+  try{
+    const r=await fetch("/api/history"+(symbol?`?symbol=${symbol}`:""));
+    const d=await r.json();
+    if(!d.sbEnabled){$("hList").innerHTML=`<div class="hempty">🔧 Supabase not configured.<br><br>Add SUPABASE_URL + SUPABASE_ANON_KEY<br>in Vercel → Environment Variables.</div>`;return;}
+    const s=d.stats||{};
+    $("hsTot").textContent=s.totalAnalyses||0;
+    $("hsRec").textContent=s.withOutcomes||0;
+    $("hsWR").textContent=s.winRate||"N/A";
+    $("hsP").textContent=s.profit||0;
+    $("hsL").textContent=s.loss||0;
+    $("hsBE").textContent=s.breakeven||0;
+    const pairs=[...new Set((d.analyses||[]).map(a=>a.symbol))];
+    $("hFilt").innerHTML=`<button class="hfb${!symbol?" active":""}" onclick="loadHist()">ALL</button>`+pairs.map(p=>`<button class="hfb${symbol===p?" active":""}" onclick="loadHist('${p}')">${p}</button>`).join("");
+    if(!d.analyses?.length){$("hList").innerHTML=`<div class="hempty">No analyses yet.<br>Run your first analysis above!</div>`;return;}
+    $("hList").innerHTML=d.analyses.map(a=>{
+      const date=new Date(a.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+      const sc=a.signal==="LONG"?"long":a.signal==="SHORT"?"short":"no";
+      
+      // FIX: Menangani data database yang bernilai null atau kosong
+      const oc = a.outcome || "pending";
+      const isPending = (oc === "pending" || oc === "" || oc === null);
+      
+      const oe=oc==="profit"?"✅":oc==="loss"?"❌":oc==="breakeven"?"➖":"⏳";
+      
+      return`<div class="hi" id="hi-${a.id}">
+        <div style="display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center">
+          <div class="hi-sig ${sc}">${a.signal||"?"}</div>
+          <div>
+            <div class="hi-info">${a.symbol} · Score:${a.confidence||"?"} · Entry:${a.entry||"?"} · ${a.rr?"RR:"+a.rr:""}${a.pnl?" · PNL:"+a.pnl+"%":""}</div>
+            <div class="hi-date">${date} · ID:...${a.id.slice(-6)}</div>
+          </div>
+          <div class="hi-oc ${oc}">${oe} ${oc.toUpperCase()}</div>
+        </div>
+        ${isPending?`<div class="hi-record">
+          <div class="hi-rec-label">⚡ RECORD OUTCOME FOR THIS TRADE:</div>
+          <div class="hi-rec-btns">
+            <button class="hi-rb profit"    onclick="recordFromHistory('${a.id}','profit',this)">✅ PROFIT</button>
+            <button class="hi-rb loss"      onclick="recordFromHistory('${a.id}','loss',this)">❌ LOSS</button>
+            <button class="hi-rb breakeven" onclick="recordFromHistory('${a.id}','breakeven',this)">➖ BE</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
+            <span style="font-size:8px;letter-spacing:2px;color:var(--text3)">PNL %:</span>
+            <input id="pnl-${a.id}" type="text" placeholder="+12.5" style="width:80px;font-size:10px;padding:4px 8px;letter-spacing:1px;background:var(--bg);border:1px solid var(--border);color:var(--accent);outline:none;"/>
+            <span id="rec-res-${a.id}" style="font-size:9px;letter-spacing:1px"></span>
+          </div>
+        </div>`:""}
+      </div>`;
+    }).join("");
+  }catch(err){$("hList").innerHTML=`<div class="hempty">⚠ ${err.message}</div>`;}
+}
+
+async function recordFromHistory(id, outcome, btn){
+  const btns = document.querySelectorAll(`#hi-${id} .hi-rb`);
+  btns.forEach(b=>{b.disabled=true;});
+  const resEl = document.getElementById(`rec-res-${id}`);
+  const pnlEl = document.getElementById(`pnl-${id}`);
+  if(resEl) resEl.textContent="Saving...";
+
+  try{
+    const pnl = pnlEl?.value?.trim() || null;
+    const r = await fetch("/api/feedback",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id, outcome, pnl}),
+    });
+    const d = await r.json();
+
+    if(d.success){
+      const emoji = outcome==="profit"?"✅":outcome==="loss"?"❌":"➖";
+      const color = outcome==="profit"?"var(--green)":outcome==="loss"?"var(--red)":"var(--yellow)";
+      const hiEl = document.getElementById(`hi-${id}`);
+      if(hiEl){
+        const badge = hiEl.querySelector(".hi-oc");
+        if(badge){
+          badge.className=`hi-oc ${outcome}`;
+          badge.textContent=`${emoji} ${outcome.toUpperCase()}`;
+        }
+        const recPanel = hiEl.querySelector(".hi-record");
+        if(recPanel) recPanel.remove();
+      }
+      if(resEl){resEl.style.color=color;resEl.textContent=`${emoji} Saved!`;}
+      setTimeout(()=>loadHist(), 500);
+    } else {
+      if(resEl){resEl.style.color="var(--red)";resEl.textContent="⚠ "+( d.error||"Failed");}
+      btns.forEach(b=>{b.disabled=false;});
+    }
+  }catch(err){
+    if(resEl){resEl.style.color="var(--red)";resEl.textContent="⚠ "+err.message;}
+    btns.forEach(b=>{b.disabled=false;});
+  }
+}
+
+initPairs();
+</script>
+</body>
+</html>
